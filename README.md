@@ -19,8 +19,9 @@ Predicting the **aqueous solubility (logS)** of small molecules using molecular 
 * Trained and compared **Linear Regression** and **Random Forest Regressor**
 * Evaluated model performance using **Mean Squared Error (MSE)** and **R² Score**
 * Visualized prediction performance using regression analysis
-* Demonstrated that simpler models can outperform more complex models on low-dimensional datasets
-* Deployed both trained models behind a **Flask backend** with a live prediction UI, actual-vs-predicted scatter plot, and a model comparison dashboard
+* Tested **Linear Regression**, **Random Forest**, **Gradient Boosting**, and **Support Vector Regressor**
+* Deployed trained models behind a **Flask backend** with a live prediction UI, actual-vs-predicted scatter plot, and a model comparison dashboard
+* Added a **SMILES to RDKit to prediction** flow for rapid molecule testing
 
 ---
 
@@ -121,26 +122,30 @@ These descriptors can be calculated directly from molecular structures without l
 
 ## 🌐 Web App
 
-The trained models are served through a Flask backend with a browser-based UI for:
+The trained models are served through a Flask backend with a modern, browser-based UI that features:
 
-* Entering molecular descriptor values and getting a **live logS prediction** from either model
-* Toggling between **Linear Regression** and **Random Forest**
-* Viewing an **actual vs. predicted scatter plot** per model
-* Viewing **train/test MSE and R²** for both models, LR coefficients, and RF feature importances
+* **Glassmorphism Design:** A stunning, premium aesthetic featuring translucent panels, glowing neon accents, and interactive hover effects.
+* **Animated Background:** A dynamic, drifting background layer that adds depth and movement to the user experience.
+* Entering molecular descriptor values and getting a **live logS prediction** from either model.
+* Instantly calculating descriptors and predictions from a **SMILES string** using RDKit.
+* Toggling between **Linear Regression**, **Random Forest**, and **Gradient Boosting**.
+* Viewing an **actual vs. predicted scatter plot** per model.
+* Viewing **train/test MSE and R²** for all models, LR coefficients, and tree-based feature importances.
 
 ### API Routes
 
-| Route       | Method | Description                                              |
-| ----------- | ------ | ---------------------------------------------------------|
-| `/`         | GET    | Renders the main UI                                      |
-| `/predict`  | POST   | Takes descriptor values + model choice, returns a logS prediction |
-| `/scatter`  | GET    | Returns actual vs. predicted points for a given model     |
-| `/metrics`  | GET    | Returns metrics, LR coefficients, and RF feature importances |
+| Route             | Method | Description                                              |
+| ----------------- | ------ | ---------------------------------------------------------|
+| `/`               | GET    | Renders the main UI                                      |
+| `/predict`        | POST   | Takes descriptor values + model choice, returns a logS prediction |
+| `/predict/smiles` | POST   | Takes a SMILES string, uses RDKit to compute descriptors, and returns prediction |
+| `/scatter`        | GET    | Returns actual vs. predicted points for a given model     |
+| `/metrics`        | GET    | Returns metrics, LR coefficients, and feature importances |
 
 ### Running the App
 
 ```bash
-cd backend
+cd app
 pip install -r requirements.txt
 python app.py
 ```
@@ -155,6 +160,7 @@ The app runs at `http://127.0.0.1:5000/` by default.
 * Pandas
 * NumPy
 * Scikit-learn
+* RDKit
 * Flask
 * Matplotlib
 * Jupyter Notebook
@@ -185,7 +191,7 @@ Linear Regression outperformed the constrained Random Forest model, achieving a 
 ```text
 Molecular_Solubility_Prediction/
 │
-├── backend/
+├── app/
 │   ├── app.py         # Flask app (routes: /, /predict, /scatter, /metrics)
 │   ├── requirements.txt
 │   ├── model/

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>logS Predictor — Neon Biotech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/x-icon">
+</head>
+<body>
+<div class="bg-animated-layer bg-112"></div>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">NEON BIOTECH · FLASK + SCIKIT-LEARN</div>
+    <h1>Molecular Solubility Predictor</h1>
+    <p class="sub">Harness trained machine learning models to instantly estimate the <b>aqueous solubility (logS)</b> of drug candidates directly from molecular descriptors or SMILES strings.</p>
+  </header>
+
+  <div class="model-toggle" role="tablist" aria-label="Model selector">
+    <button class="toggle-btn active" data-model="lr" role="tab" aria-selected="true">Linear Regression</button>
+    <button class="toggle-btn" data-model="rf" role="tab" aria-selected="false">Random Forest</button>
+    <button class="toggle-btn" data-model="gb" role="tab" aria-selected="false">Gradient Boosting</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="panel-column">
+      <div class="panel" data-tag="SMILES">
+        <h2>Predict from SMILES</h2>
+        <div class="field">
+          <input type="text" id="smiles-input" placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O">
+          <button id="smiles-btn">Generate Descriptors & Predict</button>
+        </div>
+        <p id="smiles-error"></p>
+      </div>
+
+      <div class="panel" style="margin-top: 24px;" data-tag="INPUTS">
+        <h2>Molecular Descriptors</h2>
+
+        <div class="field">
+          <div class="field-top">
+            <span class="field-label">MolLogP<span class="desc">octanol/water partition coefficient</span></span>
+            <span class="field-val" id="val-logp">2.60</span>
+          </div>
+          <input type="range" id="logp" min="{{ feature_ranges.MolLogP.min }}" max="{{ feature_ranges.MolLogP.max }}" step="0.01" value="{{ feature_ranges.MolLogP.mean }}">
+          <div class="range-labels"><span>Polar</span><span>Lipophilic</span></div>
+        </div>
+
+        <div class="field">
+          <div class="field-top">
+            <span class="field-label">MolWt<span class="desc">molecular weight (g/mol)</span></span>
+            <span class="field-val" id="val-wt">200.0</span>
+          </div>
+          <input type="range" id="wt" min="{{ feature_ranges.MolWt.min }}" max="{{ feature_ranges.MolWt.max }}" step="1" value="{{ feature_ranges.MolWt.mean }}">
+          <div class="range-labels"><span>Light</span><span>Heavy</span></div>
+        </div>
+
+        <div class="field">
+          <div class="field-top">
+            <span class="field-label">NumRotatableBonds<span class="desc">molecular flexibility</span></span>
+            <span class="field-val" id="val-rot">3</span>
+          </div>
+          <input type="range" id="rot" min="{{ feature_ranges.NumRotatableBonds.min }}" max="{{ feature_ranges.NumRotatableBonds.max }}" step="1" value="3">
+          <div class="range-labels"><span>Rigid</span><span>Flexible</span></div>
+        </div>
+
+        <div class="field">
+          <div class="field-top">
+            <span class="field-label">AromaticProportion<span class="desc">fraction of aromatic heavy atoms</span></span>
+            <span class="field-val" id="val-arom">0.30</span>
+          </div>
+          <input type="range" id="arom" min="0" max="1" step="0.01" value="0.3">
+          <div class="range-labels"><span>Aliphatic</span><span>Aromatic</span></div>
+        </div>
+
+        <div class="presets">
+          <button class="preset-btn" data-preset="aspirin">Aspirin-like</button>
+          <button class="preset-btn" data-preset="caffeine">Caffeine-like</button>
+          <button class="preset-btn" data-preset="steroid">Steroid-like</button>
+          <button class="preset-btn" data-preset="pfas">PFAS-like</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="panel-column">
+      <div class="panel" data-tag="OUTPUT">
+        <h2>Predicted logS</h2>
+        <div class="readout">
+          <div class="value" id="pred-value">—</div>
+          <div class="unit">log(mol/L), 25°C</div>
+          <div class="badge" id="pred-badge">—</div>
+        </div>
+
+        <div class="gauge-wrap">
+          <div class="gauge-track">
+            <div class="gauge-needle" id="gauge-needle" style="left:50%"></div>
+          </div>
+          <div class="gauge-scale">
+            <span>Insoluble</span>
+            <span>Poor</span>
+            <span>Moderate</span>
+            <span>Soluble</span>
+            <span>Very soluble</span>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat"><div class="k">Test R²</div><div class="v" id="stat-r2">—</div></div>
+          <div class="stat"><div class="k">Test MSE</div><div class="v" id="stat-mse">—</div></div>
+        </div>
+        <div class="latency" id="latency"></div>
+      </div>
+
+      <div class="panel" style="margin-top: 24px;" data-tag="MODEL">
+        <h2 id="model-panel-title">What's driving the prediction</h2>
+        <table class="coef-table">
+          <thead><tr><th>Descriptor</th><th id="coef-col-label">Coefficient</th><th>Weight</th></tr></thead>
+          <tbody id="coef-body"></tbody>
+        </table>
+        <p class="model-note" id="model-note"></p>
+      </div>
+    </div>
+
+  </div> <!-- End Grid -->
+
+  <!-- FULL WIDTH BOTTOM PANEL -->
+  <div class="panel chart-panel" data-tag="FIT">
+    <h2>Predicted vs. Experimental logS — all 1,144 molecules</h2>
+    <svg id="chart" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet"></svg>
+    <p class="chart-caption" id="chart-caption"></p>
+  </div>
+
+  <footer>System running on Flask · Active model: <span id="model-key-label">linear_regression_model.pkl</span> · Inference on every update</footer>
+</div>
+
+<script id="init-data" type="application/json">{{ metrics | tojson }}</script>
+<script src="{{ url_for('static', filename='js/gauge.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart.js') }}"></script>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

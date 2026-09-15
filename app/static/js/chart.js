@@ -39,8 +39,8 @@ function renderChart(points, metrics) {
 
   const caption = document.getElementById("chart-caption");
   caption.textContent =
-    `Each cyan point is one molecule scored by ${metrics.label}; the dashed line is perfect agreement (y = x). ` +
-    `Your current input is plotted in amber. Test R² is ${metrics.test_r2.toFixed(3)} — ` +
+    `Each purple point is one molecule scored by ${metrics.label}; the dashed line is perfect agreement (y = x). ` +
+    `Your current input is plotted in cyan. Test R² is ${metrics.test_r2.toFixed(3)} — ` +
     (metrics.test_r2 > 0.7
       ? "reasonably tight, though plenty of molecules still sit \u00b11-2 log units off."
       : "loose enough that this model shouldn't be trusted for close calls.");

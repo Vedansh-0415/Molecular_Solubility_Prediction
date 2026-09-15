@@ -12,6 +12,7 @@ let currentModel = "lr";
 let lrCoefficients = null;
 let lrIntercept = null;
 let rfImportance = null;
+let gbImportance = null;
 let scatterCache = {}; // modelKey -> {points, metrics}
 let inFlightController = null;
 let debounceTimer = null;
@@ -19,6 +20,7 @@ let debounceTimer = null;
 const MODEL_FILES = {
   lr: "linear_regression_model.pkl",
   rf: "random_forest_model.pkl",
+  gb: "gradient_boosting_model.pkl",
 };
 
 function readInputs() {
@@ -93,7 +95,7 @@ function renderCoefficients() {
       const isNeg = v < 0;
       const pct = (Math.abs(v) / maxAbs) * 50;
       const side = isNeg ? `right:50%;width:${pct}%;` : `left:50%;width:${pct}%;`;
-      const color = isNeg ? "var(--red)" : "var(--green)";
+      const color = isNeg ? "var(--neon-red)" : "var(--neon-green)";
       return `<tr>
         <td>${f}</td>
         <td class="${isNeg ? "mono-neg" : ""}">${v.toFixed(4)}</td>
@@ -102,22 +104,23 @@ function renderCoefficients() {
     }).join("");
     note.textContent = `Intercept: ${lrIntercept.toFixed(4)}. Negative coefficients mean the descriptor pulls solubility down as it increases.`;
   } else {
+    const importanceData = currentModel === "gb" ? gbImportance : rfImportance;
     title.textContent = "What's driving the prediction (feature importance)";
     colLabel.textContent = "Importance";
-    const maxImp = Math.max(...Object.values(rfImportance), 0.0001);
+    const maxImp = Math.max(...Object.values(importanceData), 0.0001);
     body.innerHTML = FEATURES.map((f) => {
-      const v = rfImportance[f];
+      const v = importanceData[f];
       const pct = (v / maxImp) * 100;
       return `<tr>
         <td>${f}</td>
         <td>${v.toFixed(4)}</td>
-        <td><div class="coef-bar-bg"><div class="coef-bar" style="left:0;width:${pct}%;background:var(--cyan);"></div></div></td>
+        <td><div class="coef-bar-bg"><div class="coef-bar" style="left:0;width:${pct}%;background:var(--neon-cyan);"></div></div></td>
       </tr>`;
     }).join("");
-    const dominant = FEATURES.reduce((a, b) => (rfImportance[a] > rfImportance[b] ? a : b));
-    note.textContent =
-      `This forest is capped at max_depth=2, so it barely branches: ${dominant} carries almost all the ` +
-      `predictive weight and the rest are close to ignored. That's why it underperforms Linear Regression on test data.`;
+    
+    note.textContent = currentModel === "gb" 
+      ? `Gradient Boosting iteratively corrects errors. Importance shows how much each feature contributes across all trees.` 
+      : `Random Forest builds multiple independent trees. Importance shows the average contribution of each feature.`;
   }
 }
 
@@ -162,12 +165,57 @@ function applyPreset(key) {
   scheduleRequest();
 }
 
+async function predictFromSmiles() {
+  const smilesInput = document.getElementById("smiles-input").value.trim();
+  const errorEl = document.getElementById("smiles-error");
+  errorEl.style.display = "none";
+
+  if (!smilesInput) {
+    errorEl.textContent = "Please enter a SMILES string.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  const payload = { smiles: smilesInput, model: currentModel };
+  
+  try {
+    const res = await fetch("/predict/smiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      errorEl.textContent = data.error || "Failed to predict from SMILES.";
+      errorEl.style.display = "block";
+      return;
+    }
+    
+    // Update sliders with computed descriptors
+    els.logp.value = data.descriptors.MolLogP;
+    els.wt.value = data.descriptors.MolWt;
+    els.rot.value = data.descriptors.NumRotatableBonds;
+    els.arom.value = data.descriptors.AromaticProportion;
+    
+    // Trigger the normal prediction flow to update UI
+    readInputs();
+    scheduleRequest();
+    
+  } catch (err) {
+    errorEl.textContent = "Network error while predicting from SMILES.";
+    errorEl.style.display = "block";
+  }
+}
+
 async function init() {
   const metricsRes = await fetch("/metrics");
   const metricsData = await metricsRes.json();
   lrCoefficients = metricsData.lr_coefficients;
   lrIntercept = metricsData.lr_intercept;
   rfImportance = metricsData.rf_importance;
+  gbImportance = metricsData.gb_importance;
 
   renderCoefficients();
   await loadModelData(currentModel);
@@ -188,6 +236,11 @@ async function init() {
       if (btn.dataset.model !== currentModel) switchModel(btn.dataset.model);
     });
   });
+  
+  const smilesBtn = document.getElementById("smiles-btn");
+  if (smilesBtn) {
+    smilesBtn.addEventListener("click", predictFromSmiles);
+  }
 
   readInputs();
   requestPrediction();

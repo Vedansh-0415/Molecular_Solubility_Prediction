@@ -3,6 +3,15 @@ import numpy as np
 import pandas as pd
 import joblib
 import os
+from rdkit import Chem
+from rdkit.Chem import Descriptors, rdMolDescriptors, Crippen
+from rdkit import RDLogger
+
+# Suppress RDKit C++ warnings for invalid SMILES parsing
+RDLogger.DisableLog('rdApp.*')
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "..", "data", "delaney_solubility_with_descriptors.csv")
@@ -14,15 +23,16 @@ FEATURES = ["MolLogP", "MolWt", "NumRotatableBonds", "AromaticProportion"]
 MODELS = {
     "lr": joblib.load(os.path.join(BASE_DIR, "model", "linear_regression_model.pkl")),
     "rf": joblib.load(os.path.join(BASE_DIR, "model", "random_forest_model.pkl")),
+    "gb": joblib.load(os.path.join(BASE_DIR, "model", "gradient_boosting_model.pkl")),
 }
 
 MODEL_LABELS = {
     "lr": "Linear Regression",
     "rf": "Random Forest",
+    "gb": "Gradient Boosting",
 }
 
-# Precompute dataset stats + scatter data once at startup so /scatter and the
-# feature slider ranges don't touch the CSV on every request.
+# Precompute dataset stats + scatter data once at startup
 _df = pd.read_csv(DATA_PATH)
 _X = _df[FEATURES]
 _y = _df["logS"]
@@ -43,9 +53,6 @@ for key, model in MODELS.items():
         [round(float(a), 3), round(float(p), 3)] for a, p in zip(_y, preds)
     ]
 
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
-
 _x_train, _x_test, _y_train, _y_test = train_test_split(
     _X, _y, test_size=0.2, random_state=100
 )
@@ -65,6 +72,7 @@ for key, model in MODELS.items():
 _LR_COEF = dict(zip(FEATURES, MODELS["lr"].coef_.tolist()))
 _LR_INTERCEPT = float(MODELS["lr"].intercept_)
 _RF_IMPORTANCE = dict(zip(FEATURES, MODELS["rf"].feature_importances_.tolist()))
+_GB_IMPORTANCE = dict(zip(FEATURES, MODELS["gb"].feature_importances_.tolist()))
 
 
 @app.route("/")
@@ -98,6 +106,47 @@ def predict():
         "model": model_key,
     })
 
+@app.route("/predict/smiles", methods=["POST"])
+def predict_smiles():
+    data = request.get_json(silent=True) or {}
+    smiles = data.get("smiles", "")
+    model_key = data.get("model", "lr")
+
+    if not smiles:
+        return jsonify({"error": "SMILES string is required"}), 400
+
+    if model_key not in MODELS:
+        return jsonify({"error": f"unknown model '{model_key}'"}), 400
+
+    mol = Chem.MolFromSmiles(smiles)
+    if not mol:
+        return jsonify({"error": "Invalid SMILES string"}), 400
+
+    mol_log_p = Crippen.MolLogP(mol)
+    mol_wt = Descriptors.MolWt(mol)
+    num_rotatable_bonds = rdMolDescriptors.CalcNumRotatableBonds(mol)
+    
+    aromatic_atoms = [atom for atom in mol.GetAtoms() if atom.GetIsAromatic()]
+    heavy_atoms = mol.GetNumHeavyAtoms()
+    aromatic_proportion = len(aromatic_atoms) / heavy_atoms if heavy_atoms > 0 else 0
+
+    descriptors = {
+        "MolLogP": round(float(mol_log_p), 4),
+        "MolWt": round(float(mol_wt), 4),
+        "NumRotatableBonds": num_rotatable_bonds,
+        "AromaticProportion": round(float(aromatic_proportion), 4)
+    }
+
+    features = pd.DataFrame([[descriptors[f] for f in FEATURES]], columns=FEATURES)
+    model = MODELS[model_key]
+    prediction = model.predict(features)[0]
+
+    return jsonify({
+        "prediction": round(float(prediction), 4),
+        "descriptors": descriptors,
+        "model": model_key,
+    })
+
 
 @app.route("/scatter")
 def scatter():
@@ -117,6 +166,7 @@ def metrics():
         "lr_coefficients": _LR_COEF,
         "lr_intercept": _LR_INTERCEPT,
         "rf_importance": _RF_IMPORTANCE,
+        "gb_importance": _GB_IMPORTANCE,
         "feature_ranges": FEATURE_RANGES,
     })
 
